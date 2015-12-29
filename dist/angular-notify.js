@@ -1,5 +1,5 @@
-angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile','$templateCache','$rootScope',
-  function ($timeout,$http,$compile,$templateCache,$rootScope) {
+angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile','$templateCache','$rootScope','$filter',
+  function ($timeout,$http,$compile,$templateCache,$rootScope,$filter) {
 
     var startTop = 10;
     var verticalSpacing = 15;
@@ -8,6 +8,8 @@ angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile',
     var position = 'center';
     var container = document.body;
     var maximumOpen = 0;
+    var priority = 0;
+    var subtext = '';
 
     var messageElements = [];
     var openNotificationsScope = [];
@@ -23,14 +25,18 @@ angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile',
       args.parentalPosition = (!!args.container);
       args.container = args.container ? args.container : container;
       args.classes = args.classes ? args.classes : '';
+      args.priority = args.priority ? args.priority : 0;
+      args.subtext = args.subtext ? args.subtext : '';
 
 
       var scope = args.scope ? args.scope.$new() : $rootScope.$new();
       scope.$slide = false;
       scope.$position = args.position ? args.position : position;
       scope.$message = args.message;
+      scope.$subtext = args.subtext;
       scope.$classes = args.classes;
       scope.$parentalPosition = args.parentalPosition;
+      scope.$priority = args.priority;
 
       if(args.container)
 
@@ -49,8 +55,13 @@ angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile',
         templateElement.bind('webkitTransitionEnd oTransitionEnd otransitionend transitionend msTransitionEnd', function (e) {
           if(e.propertyName === 'opacity' || e.currentTarget.style.opacity === 0 ||
             (e.originalEvent && e.originalEvent.propertyName === 'opacity')) {
+
+            var currentPosition = messageElements.map(function(obj){
+              return obj.element;
+            }).indexOf(templateElement);
+
             templateElement.remove();
-            messageElements.splice(messageElements.indexOf(templateElement), 1);
+            messageElements.splice(currentPosition, 1);
             openNotificationsScope.splice(openNotificationsScope.indexOf(scope), 1);
             layoutMessages();
           }
@@ -71,12 +82,15 @@ angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile',
           }
         }
 
-        if (args.parentalPosition) {
+        if (scope.$parentalPosition) {
           angular.element(document.body).find(args.container).addClass('fm-notify-notification-parent');
         }
 
         angular.element(args.container).append(templateElement);
-        messageElements.push(templateElement);
+        messageElements.push(
+          {element : templateElement,
+            container : scope.$parentalPosition ? args.container:'default',
+            priority : scope.$priority});
 
         if (scope.$position === 'center') {
           $timeout(function () {
@@ -93,9 +107,16 @@ angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile',
         var layoutMessages = function () {
           var j = 0;
           var currentY = startTop;
-          for (var i = messageElements.length - 1; i >= 0; i--) {
-            var shadowHeight = 10;
-            var element = messageElements[i];
+
+          //apply container and order filters
+          var containerElements = $filter('filter')(messageElements,{
+            container: scope.$parentalPosition ? args.container: 'default'
+          });
+          containerElements = $filter('orderBy')(containerElements,"priority");
+
+          for (var i = containerElements.length - 1; i >= 0; i--) {
+            var shadowHeight = 5;
+            var element = containerElements[i].element;
             var height = element[0].offsetHeight;
             var top = currentY + height + shadowHeight;
             if (element.attr('data-closing')) {
@@ -153,11 +174,13 @@ angular.module('cgNotify', []).factory('notify', ['$timeout','$http','$compile',
       position = !angular.isUndefined(args.position) ? args.position : position;
       container = args.container ? args.container : container;
       maximumOpen = args.maximumOpen ? args.maximumOpen : maximumOpen;
+      priority = args.priority ? args.priority : 0;
+      subtext = args.subtext ? args.subtext : '';
     };
 
     notify.closeAll = function () {
       for (var i = messageElements.length - 1; i >= 0; i--) {
-        var element = messageElements[i];
+        var element = messageElements[i].element;
         element.css('opacity', 0);
       }
     };
